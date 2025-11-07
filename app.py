@@ -78,10 +78,14 @@ if run_scan:
             recent_lows = data["Low"].tail(10).min()
             recent_highs = data["High"].tail(10).max()
 
-            # Smart money (Z-score of volume)
+            # Smart money (Z-score of volume) — fixed to avoid errors
             try:
-                data["Volume_Z"] = zscore(data["Volume"])
-                smart_money = round(data["Volume_Z"].iloc[-1], 2)
+                vol = pd.to_numeric(data["Volume"], errors='coerce').dropna()
+                if len(vol) > 1:
+                    data["Volume_Z"] = zscore(vol)
+                    smart_money = round(data["Volume_Z"].iloc[-1], 2)
+                else:
+                    smart_money = 0
             except:
                 smart_money = 0
 
@@ -125,5 +129,6 @@ if run_scan:
                 fig.add_trace(go.Scatter(x=data.index, y=data["EMA_20"], line=dict(color="orange", width=1), name="EMA 20"))
                 fig.add_trace(go.Scatter(x=data.index, y=data["EMA_50"], line=dict(color="blue", width=1), name="EMA 50"))
                 st.plotly_chart(fig, use_container_width=True)
+
 
 
