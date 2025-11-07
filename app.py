@@ -21,7 +21,10 @@ def safe_indicator(series, indicator_class, window=14):
         series = pd.to_numeric(series, errors='coerce').dropna()
         if len(series) < window:
             return pd.Series([float('nan')]*len(series))
-        return indicator_class(series, window=window, fillna=True).ema_indicator() if indicator_class==EMAIndicator else indicator_class(series, window=window, fillna=True).rsi()
+        if indicator_class == EMAIndicator:
+            return EMAIndicator(series, window=window, fillna=True).ema_indicator()
+        elif indicator_class == RSIIndicator:
+            return RSIIndicator(series, window=window, fillna=True).rsi()
     except:
         return pd.Series([float('nan')]*len(series))
 
@@ -51,11 +54,16 @@ if run_scan:
 
         for ticker in tickers:
             try:
-                raw_data = yf.download(ticker, period="1mo", interval="1h")
-                if raw_data.empty or len(raw_data) < 2:
+                # Download data
+                data = yf.download(ticker, period="1mo", interval="1h")
+                if data.empty or len(data) < 2:
                     raise ValueError("Not enough data")
 
-                data = raw_data.copy()
+                # Flatten multi-index columns if present
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = [col[1] for col in data.columns]
+
+                data = data.copy()
                 data["Close"] = pd.to_numeric(data["Close"], errors='coerce')
 
                 # Safe EMA/RSI
@@ -105,12 +113,12 @@ if run_scan:
             except Exception as e:
                 st.error(f"Error fetching or processing data for {ticker}: {e}")
 
-        # Display results
+        # Display results table
         if results:
             df = pd.DataFrame(results)
             st.dataframe(df.drop(columns="data"), use_container_width=True)
 
-            # Plot first valid ticker
+            # Plot chart for first valid ticker
             if data_for_plot is not None:
                 fig = go.Figure()
                 fig.add_trace(go.Candlestick(
