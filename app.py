@@ -54,8 +54,10 @@ if run_scan:
 
         for ticker in tickers:
             try:
-                # Download daily data (more reliable than 1h)
-                data = yf.download(ticker, period="1mo", interval="1d")
+                # Use Ticker.history() instead of yf.download
+                ticker_obj = yf.Ticker(ticker)
+                data = ticker_obj.history(period="1mo", interval="1d")
+
                 if data.empty or len(data) < 2:
                     raise ValueError("Not enough data")
 
