@@ -54,14 +54,19 @@ if run_scan:
 
         for ticker in tickers:
             try:
-                # Download data
-                data = yf.download(ticker, period="1mo", interval="1h")
+                # Download daily data (more reliable than 1h)
+                data = yf.download(ticker, period="1mo", interval="1d")
                 if data.empty or len(data) < 2:
                     raise ValueError("Not enough data")
 
                 # Flatten multi-index columns if present
                 if isinstance(data.columns, pd.MultiIndex):
                     data.columns = [col[1] for col in data.columns]
+
+                # Check if Close exists
+                if "Close" not in data.columns:
+                    st.error(f"No Close data for {ticker}. Skipping.")
+                    continue
 
                 data = data.copy()
                 data["Close"] = pd.to_numeric(data["Close"], errors='coerce')
