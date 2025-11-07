@@ -6,8 +6,29 @@ from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
 from scipy.stats import zscore
 
-st.set_page_config(page_title="Stock Options Scanner", layout="wide")
-st.title("📊 Daily Stock Options Scanner")
+# ----------------------------
+# Page config and theme
+# ----------------------------
+st.set_page_config(page_title="Incognitos Analysis Chart", layout="wide")
+st.markdown(
+    """
+    <style>
+    body {
+        background-color: #000000;
+        color: #ffffff;
+    }
+    .stTextInput>div>div>input {
+        background-color: #222222;
+        color: #ffffff;
+    }
+    .stButton>button {
+        background-color: #444444;
+        color: #ffffff;
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
+st.title("📊 Incognitos Analysis Chart")
 
 tickers_input = st.text_input("Enter stock tickers separated by commas:", "AAPL, MSFT, NVDA, TSLA, AMZN")
 run_scan = st.button("Run Scan")
@@ -16,7 +37,6 @@ run_scan = st.button("Run Scan")
 # Safe helpers
 # ----------------------------
 def safe_indicator(series, indicator_class, window=14):
-    """Calculate indicator safely; return Series of NaNs if fails"""
     try:
         series = pd.to_numeric(series, errors='coerce').dropna()
         if len(series) < window:
@@ -29,7 +49,6 @@ def safe_indicator(series, indicator_class, window=14):
         return pd.Series([float('nan')]*len(series))
 
 def safe_zscore(series):
-    """Calculate z-score safely; return last value or 0 if fails"""
     try:
         if isinstance(series, pd.DataFrame):
             series = series.iloc[:,0]
@@ -54,18 +73,15 @@ if run_scan:
 
         for ticker in tickers:
             try:
-                # Use Ticker.history() instead of yf.download
                 ticker_obj = yf.Ticker(ticker)
                 data = ticker_obj.history(period="1mo", interval="1d")
 
                 if data.empty or len(data) < 2:
                     raise ValueError("Not enough data")
 
-                # Flatten multi-index columns if present
                 if isinstance(data.columns, pd.MultiIndex):
                     data.columns = [col[1] for col in data.columns]
 
-                # Check if Close exists
                 if "Close" not in data.columns:
                     st.error(f"No Close data for {ticker}. Skipping.")
                     continue
@@ -73,7 +89,6 @@ if run_scan:
                 data = data.copy()
                 data["Close"] = pd.to_numeric(data["Close"], errors='coerce')
 
-                # Safe EMA/RSI
                 data["EMA_20"] = safe_indicator(data["Close"], EMAIndicator, window=20)
                 data["EMA_50"] = safe_indicator(data["Close"], EMAIndicator, window=50)
                 data["RSI"] = safe_indicator(data["Close"], RSIIndicator, window=14)
@@ -91,15 +106,12 @@ if run_scan:
                 else:
                     trend = "Neutral"
 
-                # Confidence
                 distance = abs(ema20 - ema50) / last_close * 100 if last_close != 0 else 0
                 confidence = min(100, round(distance*2,2))
 
-                # Support & Resistance
                 support = data["Low"].tail(10).min() if "Low" in data.columns else 0
                 resistance = data["High"].tail(10).max() if "High" in data.columns else 0
 
-                # Smart Money
                 smart_money = safe_zscore(data["Volume"]) if "Volume" in data.columns else 0
 
                 results.append({
@@ -120,12 +132,11 @@ if run_scan:
             except Exception as e:
                 st.error(f"Error fetching or processing data for {ticker}: {e}")
 
-        # Display results table
+        # Display results table with black/white theme
         if results:
             df = pd.DataFrame(results)
             st.dataframe(df.drop(columns="data"), use_container_width=True)
 
-            # Plot chart for first valid ticker
             if data_for_plot is not None:
                 fig = go.Figure()
                 fig.add_trace(go.Candlestick(
@@ -134,10 +145,20 @@ if run_scan:
                     high=data_for_plot["High"],
                     low=data_for_plot["Low"],
                     close=data_for_plot["Close"],
-                    name="Price"
+                    name="Price",
+                    increasing_line_color='white',
+                    decreasing_line_color='grey'
                 ))
                 if "EMA_20" in data_for_plot.columns:
                     fig.add_trace(go.Scatter(x=data_for_plot.index, y=data_for_plot["EMA_20"], line=dict(color="orange", width=1), name="EMA 20"))
                 if "EMA_50" in data_for_plot.columns:
                     fig.add_trace(go.Scatter(x=data_for_plot.index, y=data_for_plot["EMA_50"], line=dict(color="blue", width=1), name="EMA 50"))
+
+                fig.update_layout(
+                    paper_bgcolor='black',
+                    plot_bgcolor='black',
+                    font=dict(color='white'),
+                    xaxis=dict(showgrid=False),
+                    yaxis=dict(showgrid=False)
+                )
                 st.plotly_chart(fig, use_container_width=True)
