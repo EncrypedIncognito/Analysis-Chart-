@@ -6,9 +6,15 @@ from ta.trend import EMAIndicator
 from ta.momentum import RSIIndicator
 from scipy.stats import zscore
 
+# -------------------------------
+# App Title
+# -------------------------------
 st.set_page_config(page_title="Stock Options Scanner", layout="wide")
 st.title("📊 Daily Stock Options Scanner")
 
+# -------------------------------
+# User Input
+# -------------------------------
 tickers_input = st.text_input("Enter stock tickers separated by commas:", "AAPL, MSFT, NVDA, TSLA, AMZN")
 run_scan = st.button("Run Scan")
 
@@ -24,18 +30,25 @@ if run_scan:
 
         for ticker in tickers:
             try:
-                data = yf.download(ticker, period="1mo", interval="1h")
-                if data.empty or len(data) < 2:
+                raw_data = yf.download(ticker, period="1mo", interval="1h")
+                if raw_data.empty or len(raw_data) < 2:
                     raise ValueError("Not enough data")
 
-                data = data.copy()
+                data = raw_data.copy()
+
+                # Ensure numeric Close column
                 data["Close"] = pd.to_numeric(data["Close"], errors="coerce")
 
-                # Only calculate EMA/RSI if enough data
+                # Calculate indicators only if enough data
                 if len(data["Close"].dropna()) >= 20:
-                    data["EMA_20"] = EMAIndicator(data["Close"], window=20, fillna=True).ema_indicator()
-                    data["EMA_50"] = EMAIndicator(data["Close"], window=50, fillna=True).ema_indicator()
-                    data["RSI"] = RSIIndicator(data["Close"], window=14, fillna=True).rsi()
+                    try:
+                        data["EMA_20"] = EMAIndicator(data["Close"], window=20, fillna=True).ema_indicator()
+                        data["EMA_50"] = EMAIndicator(data["Close"], window=50, fillna=True).ema_indicator()
+                        data["RSI"] = RSIIndicator(data["Close"], window=14, fillna=True).rsi()
+                    except:
+                        data["EMA_20"] = data["Close"]
+                        data["EMA_50"] = data["Close"]
+                        data["RSI"] = 0
                 else:
                     data["EMA_20"] = data["Close"]
                     data["EMA_50"] = data["Close"]
@@ -62,13 +75,15 @@ if run_scan:
                 support = data["Low"].tail(10).min()
                 resistance = data["High"].tail(10).max()
 
-                # Smart Money (Z-score)
+                # Smart Money (Z-score of volume)
+                smart_money = 0
                 try:
-                    vol = pd.to_numeric(data["Volume"], errors="coerce").dropna()
+                    vol = data['Volume']
+                    if isinstance(vol, pd.DataFrame):
+                        vol = vol.iloc[:,0]  # handle multi-index columns
+                    vol = pd.to_numeric(vol, errors='coerce').dropna()
                     if len(vol) > 1:
                         smart_money = round(zscore(vol)[-1], 2)
-                    else:
-                        smart_money = 0
                 except:
                     smart_money = 0
 
@@ -81,7 +96,7 @@ if run_scan:
                     "Resistance": round(resistance,2),
                     "Smart Money (Z)": smart_money,
                     "RSI": round(rsi,1),
-                    "data": data  # store for chart
+                    "data": data  # store cleaned data for chart
                 })
 
                 if data_for_plot is None:
@@ -90,11 +105,12 @@ if run_scan:
             except Exception as e:
                 st.error(f"Error fetching or processing data for {ticker}: {e}")
 
+        # Display results table
         if results:
             df = pd.DataFrame(results)
             st.dataframe(df.drop(columns="data"), use_container_width=True)
 
-            # Chart first valid ticker
+            # Plot chart for first valid ticker
             if data_for_plot is not None:
                 fig = go.Figure()
                 fig.add_trace(go.Candlestick(
