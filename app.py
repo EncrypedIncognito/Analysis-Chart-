@@ -34,13 +34,21 @@ if run_scan:
         # Fetch Stock Data
         # -------------------------------
         def get_stock_data(ticker):
-            data = yf.download(ticker, period="1mo", interval="1h")
-            if data.empty:
+            try:
+                data = yf.download(ticker, period="1mo", interval="1h")
+                if data.empty:
+                    return None
+                data = data.copy()
+                # Ensure Close column is numeric
+                data["Close"] = pd.to_numeric(data["Close"], errors='coerce')
+                # Indicators with fillna=True to avoid empty calculations
+                data["EMA_20"] = EMAIndicator(data["Close"], window=20, fillna=True).ema_indicator()
+                data["EMA_50"] = EMAIndicator(data["Close"], window=50, fillna=True).ema_indicator()
+                data["RSI"] = RSIIndicator(data["Close"], window=14, fillna=True).rsi()
+                return data
+            except Exception as e:
+                st.error(f"Error fetching data for {ticker}: {e}")
                 return None
-            data["EMA_20"] = EMAIndicator(data["Close"], window=20).ema_indicator()
-            data["EMA_50"] = EMAIndicator(data["Close"], window=50).ema_indicator()
-            data["RSI"] = RSIIndicator(data["Close"], window=14).rsi()
-            return data
 
         # -------------------------------
         # Analyze Stock
@@ -71,8 +79,11 @@ if run_scan:
             recent_highs = data["High"].tail(10).max()
 
             # Smart money (Z-score of volume)
-            data["Volume_Z"] = zscore(data["Volume"])
-            smart_money = round(data["Volume_Z"].iloc[-1], 2)
+            try:
+                data["Volume_Z"] = zscore(data["Volume"])
+                smart_money = round(data["Volume_Z"].iloc[-1], 2)
+            except:
+                smart_money = 0
 
             return trend, confidence, last_close, recent_lows, recent_highs, smart_money, rsi
 
@@ -114,4 +125,5 @@ if run_scan:
                 fig.add_trace(go.Scatter(x=data.index, y=data["EMA_20"], line=dict(color="orange", width=1), name="EMA 20"))
                 fig.add_trace(go.Scatter(x=data.index, y=data["EMA_50"], line=dict(color="blue", width=1), name="EMA 50"))
                 st.plotly_chart(fig, use_container_width=True)
+
 
